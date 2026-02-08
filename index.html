@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ReWiseEd — AI Learning Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib)window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+*{margin:0;box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#253354 transparent}
+body{font-family:'DM Sans',sans-serif;background:#0B1120;color:#F1F5F9;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#253354;border-radius:3px}
+button,input,textarea,select{font-family:inherit}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px #D4A01722}50%{box-shadow:0 0 40px #D4A01744}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.fi{animation:fadeIn .5s ease}.su{animation:slideUp .35s ease}.sr{animation:slideRight .4s ease}
+.spin{animation:spin 1s linear infinite}
+.glow{animation:glow 2s ease infinite}
+.shimmer{background:linear-gradient(90deg,#1A2542 25%,#253354 50%,#1A2542 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+.drop-active{border-color:#D4A017!important;background:rgba(212,160,23,0.08)!important;transform:scale(1.01)}
+video{border-radius:12px}audio{width:100%;margin:8px 0}
+.hover-lift{transition:all .3s ease}.hover-lift:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.hover-glow:hover{box-shadow:0 0 30px #D4A01720}
+input:focus,textarea:focus{border-color:#D4A017!important;box-shadow:0 0 0 3px #D4A01715}
+.progress-ring{transition:stroke-dashoffset .5s ease}
+</style>
+</head>
+<body><div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useEffect,useRef,useCallback,createContext,useContext,useMemo}=React;
+const B={name:"ReWiseEd",logo:"◈",tag:"AI Learning Platform"};
+const C={bg:"#0B1120",sf:"#131C31",cd:"#1A2542",bd:"#253354",ac:"#D4A017",bl:"#3B82F6",gn:"#22C55E",rd:"#EF4444",or:"#F59E0B",pu:"#8B5CF6",pk:"#EC4899",cy:"#06B6D4",tx:"#F1F5F9",mt:"#8494B2",dm:"#4A5A78"};
+const Ctx=createContext();const useA=()=>useContext(Ctx);
+
+// ═══════ PERSISTENT STORAGE ═══════
+const DB={
+  save:(k,v)=>{try{localStorage.setItem('rw_'+k,JSON.stringify(v))}catch(e){}},
+  load:(k,def)=>{try{const v=localStorage.getItem('rw_'+k);return v?JSON.parse(v):def}catch(e){return def}},
+  clear:()=>{Object.keys(localStorage).filter(k=>k.startsWith('rw_')).forEach(k=>localStorage.removeItem(k))}
+};
+
+// ═══════ FILE PROCESSING ═══════
+async function extractPdfText(file){try{const ab=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:ab}).promise;let t="";for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const c=await pg.getTextContent();t+=c.items.map(x=>x.str).join(" ")+"\n\n";}return t.trim();}catch(e){return"";}}
+async function extractDocxText(file){try{const ab=await file.arrayBuffer();return(await mammoth.extractRawText({arrayBuffer:ab})).value;}catch(e){return"";}}
+async function readTextFile(file){return new Promise((r,j)=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=j;fr.readAsText(file);});}
+async function extractText(file){const e=file.name.split('.').pop().toLowerCase();if(e==='pdf')return extractPdfText(file);if(['docx','doc'].includes(e))return extractDocxText(file);if(['txt','md','csv','html','json'].includes(e))return readTextFile(file);return"";}
+function getVideoMeta(file){return new Promise(res=>{const v=document.createElement('video');v.preload='metadata';v.onloadedmetadata=()=>{const d=v.duration;v.currentTime=Math.min(2,d/2);v.onseeked=()=>{const c=document.createElement('canvas');c.width=320;c.height=180;c.getContext('2d').drawImage(v,0,0,320,180);res({duration:d,thumb:c.toDataURL('image/jpeg')});URL.revokeObjectURL(v.src);};};v.onerror=()=>res({duration:0,thumb:null});v.src=URL.createObjectURL(file);});}
+function getChunks(dur,m=5){const ch=[];const s=m*60;for(let i=0;i<dur;i+=s)ch.push({start:i,end:Math.min(i+s,dur),label:`${fmt(i)} - ${fmt(Math.min(i+s,dur))}`});return ch;}
+function fmt(s){return`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;}
+function fmtB(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(1)+' MB';}
+function getFileType(f){const e=f.name.split('.').pop().toLowerCase();if(['mp4','webm','mov','avi'].includes(e))return'video';if(['mp3','wav','ogg','m4a'].includes(e))return'audio';if(e==='pdf')return'pdf';if(['doc','docx'].includes(e))return'doc';if(['xlsx','xls','csv'].includes(e))return'xlsx';if(['txt','md','html'].includes(e))return'txt';return'other';}
+const FIcon=({t})=><span style={{fontSize:22}}>{{pdf:"📕",doc:"📘",txt:"📄",video:"🎬",audio:"🎵",xlsx:"📊"}[t]||"📎"}</span>;
+
+// ═══════ LOCAL AI TRANSFORMATIONS ═══════
+function splitSentences(t){return t.replace(/\n+/g,' ').split(/(?<=[.!?])\s+/).filter(s=>s.trim().length>15);}
+function keyTerms(t){const w=t.split(/\s+/),f={};const stop=new Set(['about','above','after','again','their','there','these','those','through','under','until','which','while','would','could','should','being','between','before','because','cannot','during','further','having','itself','other','where','doing','might','yours','every','still','since','same','very','with','this','that','from','have','been','were','will','into','than','they','them','then','what','when','your','also','each','some','more','most','over','only','such','just','like','many','much','well','even','back','made','make','here','does','done','find','give','goes','good','know','last','long','look','must','name','need','next','once','part','take','tell','used','want','work','year','first','number','different','important','another','following','without','however','including','something','according','sometimes','example','using','based','called','given','known','often','within','among','whether','rather','though','already','always','around','several','general','process','result','point','provide']);w.forEach(x=>{const c=x.replace(/[^a-zA-Z0-9-]/g,'');if(c.length>4)f[c.toLowerCase()]=(f[c.toLowerCase()]||0)+1;});return Object.entries(f).filter(([w,c])=>c>=2&&!stop.has(w)).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([w])=>w);}
+
+function genQuiz(text){const ss=splitSentences(text),kt=keyTerms(text),qs=[];
+  const defs=ss.filter(s=>/\b(?:is|are|was|were)\b.*\b(?:a|an|the)\b/i.test(s)&&s.length>30&&s.length<300);
+  for(const s of defs.slice(0,5)){const p=s.split(/\b(?:is|are|was|were)\b/i);if(p.length>=2&&p[0].trim().length>3){const subj=p[0].trim().replace(/^(the|a|an)\s+/i,''),def=p.slice(1).join(' is ').trim().replace(/\.$/,'');if(def.length>10){const wr=kt.filter(t=>!def.toLowerCase().includes(t)).slice(0,3).map(t=>{const s2=ss[Math.floor(Math.random()*ss.length)]||"A general concept";return s2.split(/\b(?:is|are)\b/i).slice(1).join(' is ').trim().replace(/\.$/,'').slice(0,80)||`Related to ${t}`;});if(wr.length>=3){const o=[def.slice(0,80),...wr.slice(0,3)].sort(()=>Math.random()-.5);qs.push({q:`What best describes "${subj.slice(0,60)}"?`,o,a:o.indexOf(def.slice(0,80)),ex:s.slice(0,120)});}}}}
+  for(const s of ss.slice(0,12)){if(s.length>30&&s.length<200&&qs.length<10){const iw=s.split(/\s+/).filter(w=>w.length>5&&/^[A-Za-z]/.test(w))[0];if(iw){const bl=s.replace(new RegExp(`\\b${iw}\\b`,'i'),'_____');const wr=kt.filter(t=>t!==iw.toLowerCase()).slice(0,3);if(wr.length>=3){const o=[iw,...wr].sort(()=>Math.random()-.5);qs.push({q:`Complete: "${bl.slice(0,120)}"`,o,a:o.indexOf(iw),ex:`Answer: ${iw}`});}}}}
+  return qs.slice(0,10);}
+
+function genFlash(t){const ss=splitSentences(t),cards=[];
+  for(const s of ss){if(s.length>30&&s.length<300){const m=s.match(/^([^,]+?)\b(?:is|are|was|refers to|means|describes|involves)\b(.+)$/i);if(m)cards.push({f:`What is ${m[1].trim().replace(/^(the|a|an)\s+/i,'')}?`,b:m[2].trim().replace(/\.$/,'')+'.'});else if(cards.length<15){const w=s.split(/\s+/);if(w.length>6)cards.push({f:w.slice(0,Math.floor(w.length/2)).join(' ')+'...',b:s});}}if(cards.length>=15)break;}
+  return cards.length>0?cards:[{f:"Key concept from your content",b:t.slice(0,200)}];}
+
+function genSummary(text){
+  const ss=splitSentences(text),kt=keyTerms(text);
+  // Generate bullet-point takeaways (transcript style)
+  const important=ss.filter(s=>/(?:is defined|refers to|means that|is the process|is a type|consists of|characterized|known as|describes|plays a role|essential|fundamental|critical|key|important|significant|primary|major|main)/i.test(s));
+  const takeaways=(important.length>3?important:ss.slice(0,12)).map(s=>s.replace(/\.$/,'').trim()).slice(0,15);
+  const title=ss[0]?.split(/[.!?]/)[0]?.slice(0,60)||"Content Summary";
+  const concepts=[];
+  for(const s of ss){const m=s.match(/^(.+?)\b(?:is|are|refers to|means)\b(.+)$/i);if(m&&m[1].trim().length<50&&m[2].trim().length>10){concepts.push({term:m[1].trim(),definition:m[2].trim().replace(/\.$/,'')});if(concepts.length>=8)break;}}
+  // Full transcript-style summary
+  const sections=[];
+  const chunkSize=Math.ceil(ss.length/Math.min(5,Math.ceil(ss.length/4)));
+  for(let i=0;i<ss.length;i+=chunkSize){const chunk=ss.slice(i,i+chunkSize);sections.push({heading:`Section ${Math.floor(i/chunkSize)+1}`,points:chunk.map(s=>s.trim().replace(/\.$/,''))});}
+  return{title,takeaways,concepts,sections,wordCount:text.split(/\s+/).length};}
+
+function genFill(t){const ss=splitSentences(t),kt=keyTerms(t),fills=[];for(const s of ss){if(s.length>30&&s.length<200){for(const term of kt){if(new RegExp(`\\b${term}\\b`,'i').test(s)){fills.push({t:s.replace(new RegExp(`\\b${term}\\b`,'i'),'_____'),a:term,h:term.slice(0,2)+"..."});break;}}}if(fills.length>=10)break;}return fills;}
+
+function genGamification(t){
+  return{
+    challenges:[{title:"Speed Quiz",desc:"Answer 5 questions in 60 seconds",type:"speed_quiz",pts:100,icon:"⚡"},{title:"Term Master",desc:"Match key terms with definitions",type:"matching",pts:150,icon:"🧩"},{title:"Deep Dive",desc:"Complete full summary review",type:"review",pts:200,icon:"🔬"},{title:"Streak Challenge",desc:"Study 7 days in a row",type:"streak",pts:300,icon:"🔥"}],
+    achievements:[{name:"First Steps",desc:"Complete first lesson",icon:"🌟",unlocked:false},{name:"Quiz Whiz",desc:"Score 100% on any quiz",icon:"🧠",unlocked:false},{name:"Scholar",desc:"Complete all content types",icon:"🎓",unlocked:false},{name:"Speed Demon",desc:"Finish speed quiz in 30s",icon:"⚡",unlocked:false},{name:"Dedicated",desc:"7-day study streak",icon:"🔥",unlocked:false}],
+    levels:[{lv:1,name:"Novice",pts:0,color:C.mt},{lv:2,name:"Learner",pts:200,color:C.bl},{lv:3,name:"Student",pts:500,color:C.gn},{lv:4,name:"Scholar",pts:1000,color:C.pu},{lv:5,name:"Expert",pts:2000,color:C.ac},{lv:6,name:"Master",pts:5000,color:C.pk}]
+  };
+}
+
+function genInteractiveVideo(t,chunks){const ss=splitSentences(t),kt=keyTerms(t);return chunks.slice(0,6).map((ch,i)=>{const term=kt[i]||"concept";return{seg:i,time:Math.floor((ch.end-ch.start)/2),q:ss[i*2]?`True or false: ${ss[i*2].slice(0,80)}`:`What is ${term}?`,o:["True","False"],a:0};});}
+
+function textToSpeech(t){const s=window.speechSynthesis;s.cancel();const u=new SpeechSynthesisUtterance(t.slice(0,3000));u.rate=.95;u.pitch=1;const v=s.getVoices().find(v=>v.lang.startsWith('en'));if(v)u.voice=v;return{u,s};}
+// ═══════ UI COMPONENTS (Premium) ═══════
+const Btn=({children,v="primary",sz="md",onClick,style:s,disabled:d,full,icon})=>{const[h,setH]=useState(false);const vs={primary:{bg:C.ac,c:C.bg},secondary:{bg:C.cd,c:C.tx,bd:`1px solid ${C.bd}`},ghost:{bg:"transparent",c:C.mt},danger:{bg:C.rd,c:"#fff"},success:{bg:C.gn,c:C.bg},blue:{bg:C.bl,c:"#fff"},purple:{bg:C.pu,c:"#fff"}};const szs={sm:{p:"7px 14px",fs:12},md:{p:"10px 22px",fs:14},lg:{p:"14px 32px",fs:16}};const vv=vs[v]||vs.primary;return<button disabled={d} onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{display:"inline-flex",alignItems:"center",gap:8,border:vv.bd||"none",cursor:d?"not-allowed":"pointer",borderRadius:10,fontWeight:700,fontFamily:"inherit",opacity:d?.5:h?.9:1,transform:h&&!d?"translateY(-1px)":"none",transition:"all .2s",background:vv.bg,color:vv.c,width:full?"100%":"auto",justifyContent:full?"center":"center",fontSize:szs[sz].fs,padding:szs[sz].p,...s}}>{icon&&<span>{icon}</span>}{children}</button>;};
+const Cd=({children,style:s,onClick,glow,className:cn})=>{const[h,setH]=useState(false);return<div className={cn} onClick={onClick} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} style={{background:C.cd,borderRadius:16,border:`1px solid ${C.bd}`,padding:24,transition:"all .3s",cursor:onClick?"pointer":"default",transform:h&&onClick?"translateY(-4px)":"none",boxShadow:h&&onClick?`0 12px 40px ${C.bg}88`:glow?`0 0 24px ${C.ac}15`:"none",...s}}>{children}</div>;};
+const Bg=({children,color=C.mt,big})=><span style={{display:"inline-flex",alignItems:"center",padding:big?"5px 14px":"3px 10px",borderRadius:20,background:`${color}18`,color,fontSize:big?13:11,fontWeight:700,letterSpacing:.5}}>{children}</span>;
+const Br=({val,color=C.ac,h=6,label,animated})=>{const[w,setW]=useState(0);useEffect(()=>{setTimeout(()=>setW(val),100)},[val]);return<div>{label&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:12,color:C.mt}}>{label}</span><span style={{fontSize:12,color:C.tx,fontWeight:700}}>{Math.round(val)}%</span></div>}<div style={{height:h,background:C.bd,borderRadius:h,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(animated?w:val,100)}%`,background:`linear-gradient(90deg,${color},${color}cc)`,borderRadius:h,transition:"width 1s ease"}}/></div></div>;};
+const Av=({t,sz=38,color})=><div style={{width:sz,height:sz,borderRadius:sz/2,background:color||`linear-gradient(135deg,${C.ac}40,${C.pu}40)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:sz*.35,fontWeight:800,color:C.tx,border:`2px solid ${C.bd}`,flexShrink:0}}>{t}</div>;
+const In=({label,placeholder:p,value:v,onChange:oc,type:t="text",textarea:ta,icon})=><div style={{marginBottom:14}}>{label&&<label style={{display:"block",fontSize:12,fontWeight:700,color:C.mt,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>{label}</label>}<div style={{position:"relative"}}>{icon&&<span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:16}}>{icon}</span>}{ta?<textarea placeholder={p} value={v||""} onChange={oc} rows={3} style={{width:"100%",padding:"10px 14px",paddingLeft:icon?36:14,borderRadius:10,border:`1px solid ${C.bd}`,background:C.sf,color:C.tx,fontSize:14,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",outline:"none",transition:"all .2s"}}/>:<input type={t} placeholder={p} value={v||""} onChange={oc} style={{width:"100%",padding:"10px 14px",paddingLeft:icon?36:14,borderRadius:10,border:`1px solid ${C.bd}`,background:C.sf,color:C.tx,fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none",transition:"all .2s"}}/>}</div></div>;
+const Md=({open:o,onClose:oc,title:t,children:ch,wide:w})=>{if(!o)return null;return<div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.75)",backdropFilter:"blur(12px)"}} onClick={oc}><div className="su" onClick={e=>e.stopPropagation()} style={{background:C.cd,borderRadius:20,padding:32,maxWidth:w?960:540,width:"95%",maxHeight:"90vh",overflow:"auto",border:`1px solid ${C.bd}`,boxShadow:`0 24px 80px rgba(0,0,0,.5)`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><h2 style={{margin:0,fontSize:22,color:C.tx,fontFamily:"'Playfair Display',serif"}}>{t}</h2><button onClick={oc} style={{background:C.sf,border:"none",color:C.mt,cursor:"pointer",fontSize:16,width:32,height:32,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>{ch}</div></div>;};
+const Tb=({tabs,active:a,onChange:oc})=><div style={{display:"flex",gap:3,background:C.sf,borderRadius:12,padding:4,marginBottom:20,flexWrap:"wrap"}}>{tabs.map(t=><button key={t.id} onClick={()=>oc(t.id)} style={{padding:"10px 20px",borderRadius:9,border:"none",cursor:"pointer",background:a===t.id?C.cd:"transparent",color:a===t.id?C.tx:C.mt,fontWeight:600,fontSize:13,fontFamily:"inherit",transition:"all .2s",boxShadow:a===t.id?`0 2px 8px ${C.bg}`:"none"}}>{t.icon&&<span style={{marginRight:6}}>{t.icon}</span>}{t.label}</button>)}</div>;
+const Toast=({message:m,type:t="success",onClose:oc})=>{useEffect(()=>{const tm=setTimeout(oc,4000);return()=>clearTimeout(tm)},[]);return<div className="su" style={{position:"fixed",bottom:24,right:24,zIndex:9999,padding:"16px 28px",borderRadius:14,background:t==="success"?C.gn:t==="error"?C.rd:C.bl,color:t==="success"?C.bg:"#fff",fontWeight:700,fontSize:14,boxShadow:`0 12px 40px rgba(0,0,0,.4)`,display:"flex",alignItems:"center",gap:10,cursor:"pointer",maxWidth:420}} onClick={oc}>{t==="success"?"✓":t==="error"?"✕":"ℹ"} {m}</div>;};
+const Spinner=({size:s=20,color:c=C.ac})=><div className="spin" style={{width:s,height:s,border:`3px solid ${c}33`,borderTopColor:c,borderRadius:"50%",display:"inline-block"}}/>;
+const Empty=({icon,title,desc,action,onAction})=><div style={{textAlign:"center",padding:"48px 24px"}}><div style={{fontSize:56,marginBottom:16,opacity:.6}}>{icon}</div><h3 style={{margin:"0 0 8px",fontSize:18,color:C.tx}}>{title}</h3><p style={{color:C.mt,margin:"0 0 20px",fontSize:14,maxWidth:360,marginLeft:"auto",marginRight:"auto",lineHeight:1.5}}>{desc}</p>{action&&<Btn onClick={onAction}>{action}</Btn>}</div>;
+// Stat card with animated number
+const St=({label,value,prefix="",icon,color=C.ac,change})=><Cd className="hover-lift" style={{flex:"1 1 200px",minWidth:170}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><p style={{color:C.mt,fontSize:11,margin:0,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>{label}</p><p style={{color:C.tx,fontSize:28,margin:"8px 0 0",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{prefix}{typeof value==="number"?value.toLocaleString():value}</p>{change!=null&&<p style={{margin:"6px 0 0",fontSize:12,color:change>0?C.gn:C.rd,fontWeight:600}}>{change>0?"↑":"↓"} {Math.abs(change)}%</p>}</div>{icon&&<div style={{width:42,height:42,borderRadius:12,background:`${color}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{icon}</div>}</div></Cd>;
+// ═══════ TRAINER: UPLOAD & TRANSFORM ═══════
+const TrainerUpload=()=>{
+  const{setToast,library,setLibrary}=useA();
+  const fileRef=useRef(null);
+  const[files,setFiles]=useState([]);const[step,setStep]=useState("upload");const[exText,setExText]=useState("");const[extracting,setExtracting]=useState(false);
+  const[tSel,setTSel]=useState(new Set());const[tforming,setTforming]=useState(false);const[tProg,setTProg]=useState({});const[results,setResults]=useState({});const[activeR,setActiveR]=useState(null);
+  const[dragOver,setDragOver]=useState(false);const[courseName,setCourseName]=useState("");const[courseDesc,setCourseDesc]=useState("");
+  const vidRef=useRef(null);const[curChunk,setCurChunk]=useState(0);const[speaking,setSpeaking]=useState(false);
+  // Quiz state
+  const[qI,setQI]=useState(0);const[qA,setQA]=useState({});const[qS,setQS]=useState(false);
+  // Flash state
+  const[fI,setFI]=useState(0);const[fFlip,setFFlip]=useState(false);
+  // Fill state
+  const[fillA,setFillA]=useState({});const[fillC,setFillC]=useState(false);
+  // Video interactive
+  const[showVQ,setShowVQ]=useState(null);const[vqA,setVqA]=useState(null);
+
+  const handleFiles=useCallback(async(nf)=>{const pr=[];for(const f of nf){const t=getFileType(f),url=URL.createObjectURL(f);let vm=null;if(t==='video')vm=await getVideoMeta(f);pr.push({file:f,name:f.name,size:f.size,type:t,status:"ready",text:"",videoMeta:vm,url});}setFiles(p=>[...p,...pr]);setToast({m:`${nf.length} file(s) added`,t:"success"});},[]);
+
+  const extractAll=async()=>{setExtracting(true);let all="";const u=[...files];for(let i=0;i<u.length;i++){u[i]={...u[i],status:"extracting"};setFiles([...u]);let txt="";if(['pdf','doc','txt','xlsx'].includes(u[i].type))txt=await extractText(u[i].file);else if(u[i].type==='video'&&u[i].videoMeta)txt=`[Video content: ${u[i].name}, Duration: ${fmt(u[i].videoMeta.duration)}, covering educational material about the uploaded topic. This video contains ${Math.ceil(u[i].videoMeta.duration/60)} minutes of instructional content.]`;u[i]={...u[i],status:"done",text:txt};setFiles([...u]);all+=txt+"\n\n";}setExText(all.trim());setExtracting(false);if(all.trim().length<20)setToast({m:"Could not extract enough text — try PDF/DOCX/TXT",t:"error"});else{setToast({m:`Extracted ${all.trim().split(/\s+/).length} words!`,t:"success"});setStep("details");}};
+
+  const runTransform=async()=>{if(tSel.size===0){setToast({m:"Select transformations",t:"error"});return;}if(!courseName.trim()){setToast({m:"Enter a course name",t:"error"});return;}setTforming(true);setResults({});const delay=ms=>new Promise(r=>setTimeout(r,ms));const sel=[...tSel];const prog={};sel.forEach(s=>prog[s]="working");setTProg({...prog});
+    for(const t of sel){setTProg(p=>({...p,[t]:"working"}));await delay(500+Math.random()*700);try{
+      if(t==="quiz"){setResults(p=>({...p,quiz:genQuiz(exText)}));}
+      else if(t==="flashcards"){setResults(p=>({...p,flashcards:genFlash(exText)}));}
+      else if(t==="summary"){setResults(p=>({...p,summary:genSummary(exText)}));}
+      else if(t==="fill"){setResults(p=>({...p,fill:genFill(exText)}));}
+      else if(t==="gamification"){setResults(p=>({...p,gamification:genGamification(exText)}));}
+      else if(t==="audio"){setResults(p=>({...p,audio:true}));}
+      else if(t==="videoChunks"){const vf=files.find(f=>f.type==='video');if(vf?.videoMeta)setResults(p=>({...p,videoChunks:getChunks(vf.videoMeta.duration,5),videoFile:vf}));}
+      else if(t==="interactive"){const vf=files.find(f=>f.type==='video');if(vf?.videoMeta){const ch=getChunks(vf.videoMeta.duration,5);setResults(p=>({...p,interactiveVideo:genInteractiveVideo(exText,ch),videoFile:vf,videoChunks:ch}));}}
+      setTProg(p=>({...p,[t]:"done"}));}catch(e){setTProg(p=>({...p,[t]:"error"}));}}
+    setTforming(false);setToast({m:"Transformations complete!",t:"success"});setStep("results");};
+
+  // Save course to library
+  const saveCourse=()=>{const course={id:Date.now(),name:courseName,desc:courseDesc,files:files.map(f=>({name:f.name,type:f.type,size:f.size,thumb:f.videoMeta?.thumb||null,duration:f.videoMeta?.duration||null})),text:exText,results:{...results},transformTypes:[...tSel],createdAt:new Date().toISOString(),students:[],published:false};setLibrary(p=>{const n=[course,...p];DB.save('library',n);return n;});setToast({m:`"${courseName}" saved to library!`,t:"success"});};
+
+  const hasText=files.some(f=>['pdf','doc','txt','xlsx'].includes(f.type));
+  const hasVideo=files.some(f=>f.type==='video');
+  const transforms=[{id:"quiz",l:"AI Quizzes",i:"❓",d:"MCQ from content",av:hasText||hasVideo},{id:"flashcards",l:"Flashcards",i:"⚡",d:"Study cards",av:hasText||hasVideo},{id:"summary",l:"Transcript & Takeaways",i:"📝",d:"Bullet-point takeaways",av:hasText||hasVideo},{id:"fill",l:"Fill Blanks",i:"✏️",d:"Active recall",av:hasText||hasVideo},{id:"audio",l:"Text → Audio",i:"🔊",d:"Listen to content",av:hasText},{id:"videoChunks",l:"Split Video",i:"✂️",d:"5-min micro chunks",av:hasVideo},{id:"interactive",l:"Interactive Video",i:"🎯",d:"Quiz overlay",av:hasVideo},{id:"gamification",l:"Gamification",i:"🎮",d:"Points & challenges",av:hasText||hasVideo}];
+
+  const steps=["upload","details","transform","results"];const si=steps.indexOf(step);
+
+  return<div className="fi">
+    {/* Progress Steps */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
+      <div><h1 style={{fontSize:26,margin:"0 0 4px",fontFamily:"'Playfair Display',serif"}}>Create New Course</h1><p style={{color:C.mt,fontSize:14}}>Upload content → AI transforms into learning materials</p></div>
+      <div style={{display:"flex",gap:4}}>{steps.map((s,i)=><React.Fragment key={s}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:30,height:30,borderRadius:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,background:si>=i?C.ac:C.cd,color:si>=i?C.bg:C.mt,transition:"all .3s"}}>{si>i?"✓":i+1}</div><span style={{fontSize:12,fontWeight:600,color:si>=i?C.tx:C.dm}}>{["Upload","Details","Transform","Results"][i]}</span></div>{i<3&&<div style={{width:20,height:2,background:si>i?C.ac:C.bd,margin:"0 2px"}}/>}</React.Fragment>)}</div>
+    </div>
+
+    {/* UPLOAD */}
+    {step==="upload"&&<div>
+      <Cd className="hover-glow"><div onDrop={e=>{e.preventDefault();setDragOver(false);handleFiles(Array.from(e.dataTransfer.files));}} onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)} onClick={()=>fileRef.current?.click()} className={dragOver?"drop-active":""} style={{border:`2px dashed ${dragOver?C.ac:C.bd}`,borderRadius:14,padding:"56px 32px",textAlign:"center",cursor:"pointer",transition:"all .3s"}}>
+        <input ref={fileRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.mp4,.webm,.mov,.mp3,.wav,.xlsx,.csv" onChange={e=>{if(e.target.files.length)handleFiles(Array.from(e.target.files));e.target.value="";}} style={{display:"none"}}/>
+        <div style={{fontSize:52,marginBottom:16}}>📁</div>
+        <h3 style={{margin:"0 0 8px",fontSize:20}}>Drag & drop files or click to browse</h3>
+        <p style={{color:C.mt,margin:"0 0 20px",fontSize:14}}>Upload from your computer — we'll extract and transform the content</p>
+        <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap"}}>{[{l:"PDF",c:C.rd},{l:"DOCX",c:C.bl},{l:"Video",c:C.pu},{l:"Audio",c:C.pk},{l:"Text",c:C.gn},{l:"Excel",c:C.or}].map(t=><Bg key={t.l} color={t.c}>{t.l}</Bg>)}</div>
+      </div></Cd>
+      {files.length>0&&<div style={{marginTop:20}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><h3 style={{fontSize:16}}>Uploaded ({files.length})</h3><Btn v="ghost" sz="sm" onClick={()=>fileRef.current?.click()} icon="➕">More</Btn></div>
+        {files.map((f,i)=><div key={i} className="sr" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderRadius:12,background:C.cd,border:`1px solid ${C.bd}`,marginBottom:8,animationDelay:`${i*.1}s`}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}><FIcon t={f.type}/><div><div style={{fontSize:14,fontWeight:600}}>{f.name}</div><div style={{fontSize:12,color:C.mt}}>{f.type.toUpperCase()} • {fmtB(f.size)}{f.videoMeta&&` • ${fmt(f.videoMeta.duration)}`}{f.status==="extracting"?<span style={{color:C.or}}> • Extracting…</span>:f.status==="done"?<span style={{color:C.gn}}> • Ready ✓</span>:null}</div></div></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>{f.videoMeta?.thumb&&<img src={f.videoMeta.thumb} style={{width:64,height:36,borderRadius:6,objectFit:"cover"}}/>}<button onClick={()=>setFiles(p=>p.filter((_,j)=>j!==i))} style={{background:C.sf,border:"none",color:C.mt,cursor:"pointer",width:28,height:28,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>
+        </div>)}
+        <Btn onClick={extractAll} disabled={extracting} style={{marginTop:16}}>{extracting?<><Spinner size={16}/> Extracting…</>:"Extract Content & Continue →"}</Btn>
+      </div>}
+      {files.length===0&&<div style={{marginTop:24,textAlign:"center",color:C.dm,fontSize:13}}>💡 Tip: Upload a PDF or DOCX with rich text for the best quiz and flashcard results</div>}
+    </div>}
+
+    {/* DETAILS */}
+    {step==="details"&&<div className="fi">
+      <Cd style={{marginBottom:20}}><h3 style={{margin:"0 0 16px",fontSize:18}}>Course Details</h3>
+        <In label="Course Name" placeholder="e.g. Advanced Machine Learning" value={courseName} onChange={e=>setCourseName(e.target.value)} icon="📚"/>
+        <In label="Description" placeholder="What will students learn?" value={courseDesc} onChange={e=>setCourseDesc(e.target.value)} textarea icon="📝"/>
+      </Cd>
+      {exText&&<Cd style={{marginBottom:20}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><h3 style={{margin:0,fontSize:16}}>Extracted Content</h3><Bg color={C.gn} big>{exText.split(/\s+/).length} words</Bg></div><div style={{background:C.sf,borderRadius:10,padding:16,maxHeight:120,overflow:"auto",fontSize:13,color:C.mt,lineHeight:1.6}}>{exText.slice(0,600)}{exText.length>600?"…":""}</div></Cd>}
+      <h3 style={{fontSize:16,marginBottom:16}}>Select Transformations</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
+        {transforms.map(t=><div key={t.id} onClick={()=>t.av&&(tSel.has(t.id)?setTSel(p=>{const n=new Set(p);n.delete(t.id);return n;}):setTSel(p=>{const n=new Set(p);n.add(t.id);return n;}))} className="hover-lift" style={{padding:18,borderRadius:12,cursor:t.av?"pointer":"not-allowed",border:`2px solid ${tSel.has(t.id)?C.ac:C.bd}`,background:tSel.has(t.id)?`${C.ac}0a`:!t.av?`${C.bd}22`:"transparent",opacity:t.av?1:.35,textAlign:"center",transition:"all .2s"}}>
+          <div style={{fontSize:26,marginBottom:6}}>{t.i}</div><div style={{fontSize:13,fontWeight:700,marginBottom:3}}>{t.l}</div><div style={{fontSize:11,color:C.mt}}>{t.d}</div>
+          {tSel.has(t.id)&&<div style={{color:C.ac,marginTop:4,fontSize:14}}>✓</div>}
+          {tProg[t.id]==="working"&&<Spinner size={14}/>}{tProg[t.id]==="done"&&<span style={{color:C.gn,fontSize:12}}>✓</span>}
+        </div>)}
+      </div>
+      <div style={{display:"flex",gap:10}}><Btn v="secondary" onClick={()=>setStep("upload")}>← Back</Btn><Btn onClick={runTransform} disabled={tforming||tSel.size===0}>{tforming?<><Spinner size={16}/> Transforming…</>:`✦ Transform ${tSel.size} Selected`}</Btn></div>
+    </div>}
+    {/* RESULTS */}
+    {step==="results"&&<div className="fi">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{margin:0,fontSize:20,fontFamily:"'Playfair Display',serif"}}>✦ Generated Content</h2>
+        <div style={{display:"flex",gap:8}}><Btn v="success" sz="sm" onClick={saveCourse} icon="💾">Save Course</Btn><Btn v="ghost" sz="sm" onClick={()=>{setStep("upload");setFiles([]);setResults({});setTSel(new Set());setExText("");setActiveR(null);setCourseName("");setCourseDesc("");}}>🔄 New</Btn></div>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {results.quiz?.length>0&&<Btn v={activeR==="quiz"?"primary":"secondary"} sz="sm" onClick={()=>{setActiveR("quiz");setQI(0);setQA({});setQS(false);}}>❓ Quiz ({results.quiz.length})</Btn>}
+        {results.flashcards?.length>0&&<Btn v={activeR==="fc"?"primary":"secondary"} sz="sm" onClick={()=>{setActiveR("fc");setFI(0);setFFlip(false);}}>⚡ Cards ({results.flashcards.length})</Btn>}
+        {results.summary&&<Btn v={activeR==="sum"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("sum")}>📝 Takeaways</Btn>}
+        {results.fill?.length>0&&<Btn v={activeR==="fill"?"primary":"secondary"} sz="sm" onClick={()=>{setActiveR("fill");setFillA({});setFillC(false);}}>✏️ Fill ({results.fill.length})</Btn>}
+        {results.audio&&<Btn v={activeR==="audio"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("audio")}>🔊 Audio</Btn>}
+        {results.videoChunks&&<Btn v={activeR==="vc"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("vc")}>✂️ Chunks</Btn>}
+        {results.interactiveVideo&&<Btn v={activeR==="iv"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("iv")}>🎯 Interactive</Btn>}
+        {results.gamification&&<Btn v={activeR==="gm"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("gm")}>🎮 Gamified</Btn>}
+      </div>
+
+      {/* QUIZ */}
+      {activeR==="quiz"&&results.quiz&&<Cd>{!qS?<div><div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><Bg color={C.bl} big>Question {qI+1}/{results.quiz.length}</Bg></div><div style={{background:C.sf,borderRadius:12,padding:22,marginBottom:16}}><div style={{fontSize:17,marginBottom:18,lineHeight:1.5,fontWeight:500}}>{results.quiz[qI].q}</div>{results.quiz[qI].o.map((o,i)=><div key={i} onClick={()=>setQA(p=>({...p,[qI]:i}))} className="hover-lift" style={{padding:"12px 16px",borderRadius:10,border:`2px solid ${qA[qI]===i?C.ac:C.bd}`,background:qA[qI]===i?`${C.ac}12`:"transparent",marginBottom:8,display:"flex",alignItems:"center",gap:12,fontSize:14,cursor:"pointer"}}><div style={{width:22,height:22,borderRadius:11,border:`2px solid ${qA[qI]===i?C.ac:C.bd}`,display:"flex",alignItems:"center",justifyContent:"center",background:qA[qI]===i?C.ac:"transparent",color:C.bg,fontSize:11,flexShrink:0,transition:"all .2s"}}>{qA[qI]===i&&"✓"}</div><span>{typeof o==='string'?o.slice(0,140):String(o)}</span></div>)}</div><Br val={(Object.keys(qA).length/results.quiz.length)*100} color={C.ac} h={5} animated/><div style={{display:"flex",justifyContent:"space-between",marginTop:14}}><Btn v="secondary" sz="sm" disabled={qI===0} onClick={()=>setQI(i=>i-1)}>← Prev</Btn><div style={{display:"flex",gap:3}}>{results.quiz.map((_,i)=><div key={i} onClick={()=>setQI(i)} style={{width:26,height:26,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",background:qI===i?C.ac:qA[i]!=null?`${C.gn}25`:C.sf,color:qI===i?C.bg:C.mt,fontSize:10,fontWeight:700,cursor:"pointer",transition:"all .2s"}}>{i+1}</div>)}</div>{qI<results.quiz.length-1?<Btn sz="sm" onClick={()=>setQI(i=>i+1)}>Next →</Btn>:<Btn sz="sm" onClick={()=>setQS(true)} disabled={Object.keys(qA).length<results.quiz.length}>Submit</Btn>}</div></div>:<div style={{padding:20}}><div style={{textAlign:"center",marginBottom:20}}><span style={{fontSize:56}}>🎉</span><h2 style={{margin:"12px 0 4px",fontFamily:"'Playfair Display',serif"}}>Score: {results.quiz.filter((q,i)=>qA[i]===q.a).length}/{results.quiz.length}</h2><Br val={(results.quiz.filter((q,i)=>qA[i]===q.a).length/results.quiz.length)*100} color={C.gn} h={8} animated/></div>{results.quiz.map((q,i)=><div key={i} className="sr" style={{padding:"12px 16px",borderRadius:10,background:C.sf,marginBottom:8,borderLeft:`4px solid ${qA[i]===q.a?C.gn:C.rd}`,animationDelay:`${i*.05}s`}}><div style={{fontSize:13,fontWeight:600}}>{q.q}</div><div style={{fontSize:12,color:qA[i]===q.a?C.gn:C.rd,marginTop:4}}>{qA[i]===q.a?"✓ Correct":"✕ "+q.o[q.a]}{q.ex&&<span style={{color:C.mt}}> — {q.ex}</span>}</div></div>)}<Btn v="secondary" onClick={()=>{setQA({});setQS(false);setQI(0);}} style={{marginTop:12}}>Retake</Btn></div>}</Cd>}
+
+      {/* FLASHCARDS */}
+      {activeR==="fc"&&results.flashcards&&<div style={{maxWidth:520,margin:"0 auto"}}><Cd onClick={()=>setFFlip(!fFlip)} className="hover-lift glow" style={{minHeight:270,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:44,cursor:"pointer",background:`linear-gradient(145deg,${C.cd},${C.sf})`}}><Bg color={C.bl} big>Card {fI+1}/{results.flashcards.length}</Bg>{!fFlip?<h2 style={{margin:"24px 0 12px",fontSize:21,fontFamily:"'Playfair Display',serif",lineHeight:1.4}}>{results.flashcards[fI].f}</h2>:<div style={{margin:"24px 0 12px",padding:"18px 28px",borderRadius:12,background:`${C.ac}0a`,border:`1px dashed ${C.ac}30`,fontSize:14,color:C.mt,lineHeight:1.7}}>{results.flashcards[fI].b}</div>}<p style={{color:C.dm,fontSize:12}}>{fFlip?"Click for next":"Click to reveal"}</p></Cd><div style={{display:"flex",justifyContent:"center",gap:14,marginTop:18}}><Btn v="danger" sz="sm" onClick={()=>{setFI(i=>(i+1)%results.flashcards.length);setFFlip(false);}}>😓 Hard</Btn><Btn v="secondary" sz="sm" onClick={()=>{setFI(i=>(i+1)%results.flashcards.length);setFFlip(false);}}>👍 Good</Btn><Btn v="success" sz="sm" onClick={()=>{setFI(i=>(i+1)%results.flashcards.length);setFFlip(false);}}>🎯 Easy</Btn></div><div style={{marginTop:14}}><Br val={((fI+1)/results.flashcards.length)*100} label="Progress" color={C.ac} h={5} animated/></div></div>}
+
+      {/* SUMMARY / TAKEAWAYS */}
+      {activeR==="sum"&&results.summary&&<Cd><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><h2 style={{margin:0,fontSize:20,fontFamily:"'Playfair Display',serif"}}>{results.summary.title||"Content Takeaways"}</h2><Bg color={C.gn} big>{results.summary.wordCount} words analyzed</Bg></div>
+        {results.summary.takeaways?.length>0&&<div style={{marginBottom:24}}><h4 style={{color:C.ac,marginBottom:12,fontSize:15}}>📋 Key Takeaways</h4>{results.summary.takeaways.map((p,i)=><div key={i} className="sr" style={{display:"flex",gap:12,marginBottom:10,padding:"10px 14px",borderRadius:8,background:C.sf,animationDelay:`${i*.06}s`}}><span style={{color:C.ac,fontWeight:800,fontSize:14,flexShrink:0}}>•</span><span style={{fontSize:14,lineHeight:1.5,color:C.tx}}>{p}</span></div>)}</div>}
+        {results.summary.sections?.length>0&&<div style={{marginBottom:24}}><h4 style={{color:C.bl,marginBottom:12,fontSize:15}}>📖 Section Breakdown</h4>{results.summary.sections.map((s,i)=><div key={i} style={{marginBottom:16}}><div style={{fontSize:13,fontWeight:700,color:C.cy,marginBottom:8}}>{s.heading}</div>{s.points.map((p,j)=><div key={j} style={{display:"flex",gap:10,marginBottom:6,paddingLeft:12}}><span style={{color:C.gn,flexShrink:0}}>▸</span><span style={{fontSize:13,color:C.mt,lineHeight:1.5}}>{p}</span></div>)}</div>)}</div>}
+        {results.summary.concepts?.length>0&&<div><h4 style={{color:C.pu,marginBottom:12,fontSize:15}}>🔑 Key Concepts</h4><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>{results.summary.concepts.map((c,i)=><div key={i} className="hover-lift" style={{padding:"14px 18px",borderRadius:10,background:C.sf,border:`1px solid ${C.bd}`}}><div style={{fontWeight:700,fontSize:14,marginBottom:4,color:C.ac}}>{c.term}</div><div style={{fontSize:13,color:C.mt,lineHeight:1.4}}>{c.definition}</div></div>)}</div></div>}
+      </Cd>}
+
+      {/* FILL BLANKS */}
+      {activeR==="fill"&&results.fill&&<Cd><Bg color={C.ac} big>Fill in the Blanks</Bg><h3 style={{margin:"12px 0 18px"}}>Complete each sentence</h3>{results.fill.map((f,i)=><div key={i} className="sr" style={{background:C.sf,borderRadius:12,padding:18,marginBottom:12,animationDelay:`${i*.08}s`}}><div style={{fontSize:15,lineHeight:2.2}}>{f.t.split("_____").map((part,j)=><React.Fragment key={j}>{part}{j<f.t.split("_____").length-1&&<input value={fillA[i]||""} onChange={e=>setFillA(p=>({...p,[i]:e.target.value}))} disabled={fillC} placeholder="type answer" style={{width:130,padding:"5px 10px",borderRadius:7,border:`2px solid ${fillC?(fillA[i]||"").toLowerCase().trim()===f.a.toLowerCase()?C.gn:C.rd:C.bd}`,background:fillC?(fillA[i]||"").toLowerCase().trim()===f.a.toLowerCase()?`${C.gn}12`:`${C.rd}12`:C.bg,color:C.tx,fontSize:14,fontFamily:"inherit",outline:"none",textAlign:"center",transition:"all .2s"}}/>}</React.Fragment>)}</div>{fillC&&(fillA[i]||"").toLowerCase().trim()!==f.a.toLowerCase()&&<div style={{fontSize:12,color:C.gn,marginTop:4}}>✓ Answer: {f.a}</div>}{!fillC&&f.h&&<Btn v="ghost" sz="sm" onClick={()=>setToast({m:`Hint: ${f.h}`,t:"info"})}>💡 Hint</Btn>}</div>)}<div style={{display:"flex",gap:8,marginTop:14}}>{!fillC?<Btn onClick={()=>setFillC(true)}>Check Answers</Btn>:<Btn v="secondary" onClick={()=>{setFillA({});setFillC(false);}}>Try Again</Btn>}</div></Cd>}
+
+      {/* AUDIO */}
+      {activeR==="audio"&&<Cd><h3 style={{marginBottom:16}}>🔊 Text to Audio</h3><div style={{background:C.sf,borderRadius:10,padding:16,marginBottom:16,maxHeight:200,overflow:"auto",fontSize:13,color:C.mt,lineHeight:1.7}}>{exText?.slice(0,2000)}</div><div style={{display:"flex",gap:10,alignItems:"center"}}>{!speaking?<Btn onClick={()=>{const{u,s}=textToSpeech(exText);u.onend=()=>setSpeaking(false);s.speak(u);setSpeaking(true);}}>▶ Play</Btn>:<Btn v="danger" onClick={()=>{speechSynthesis.cancel();setSpeaking(false);}}>⏹ Stop</Btn>}{speaking&&<span style={{color:C.gn,fontSize:14,display:"flex",alignItems:"center",gap:8}}><Spinner size={16} color={C.gn}/>Speaking…</span>}</div></Cd>}
+
+      {/* VIDEO CHUNKS */}
+      {activeR==="vc"&&results.videoChunks&&<Cd><h3 style={{marginBottom:16}}>✂️ Micro Chunks ({results.videoChunks.length})</h3>{results.videoFile&&<video ref={vidRef} src={results.videoFile.url} controls style={{width:"100%",maxHeight:300,background:"#000",marginBottom:16}}/>}<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:10}}>{results.videoChunks.map((ch,i)=><div key={i} onClick={()=>{if(vidRef.current){vidRef.current.currentTime=ch.start;vidRef.current.play();setCurChunk(i);}}} className="hover-lift" style={{padding:14,borderRadius:10,background:curChunk===i?`${C.ac}15`:C.sf,border:`2px solid ${curChunk===i?C.ac:C.bd}`,cursor:"pointer"}}><div style={{fontWeight:700,fontSize:14}}>Chunk {i+1}</div><div style={{fontSize:12,color:C.mt}}>{ch.label}</div></div>)}</div></Cd>}
+
+      {/* INTERACTIVE VIDEO */}
+      {activeR==="iv"&&results.interactiveVideo&&<Cd><h3 style={{marginBottom:16}}>🎯 Interactive Video</h3>{results.videoFile&&<div style={{position:"relative",marginBottom:16}}><video ref={vidRef} src={results.videoFile.url} controls style={{width:"100%",maxHeight:360,background:"#000"}}/>{showVQ!==null&&results.interactiveVideo[showVQ]&&<div style={{position:"absolute",bottom:60,left:"5%",width:"90%",background:`${C.cd}ee`,backdropFilter:"blur(12px)",borderRadius:14,padding:18,border:`2px solid ${C.ac}40`}}><div style={{fontSize:15,fontWeight:600,marginBottom:12}}>{results.interactiveVideo[showVQ].q}</div><div style={{display:"flex",gap:8}}>{results.interactiveVideo[showVQ].o.map((o,i)=><Btn key={i} v={vqA===i?(i===results.interactiveVideo[showVQ].a?"success":"danger"):"secondary"} onClick={()=>{setVqA(i);setTimeout(()=>{setShowVQ(null);setVqA(null);vidRef.current?.play();},1500);vidRef.current?.pause();}}>{o}</Btn>)}</div></div>}</div>}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{results.interactiveVideo.map((q,i)=><Btn key={i} v="secondary" sz="sm" onClick={()=>{setShowVQ(i);setVqA(null);vidRef.current?.pause();}}>Q{i+1}</Btn>)}</div></Cd>}
+
+      {/* GAMIFICATION */}
+      {activeR==="gm"&&results.gamification&&<Cd><h3 style={{marginBottom:20}}>🎮 Gamification System</h3>{results.gamification.levels&&<div style={{marginBottom:24}}><h4 style={{color:C.ac,marginBottom:12}}>🏆 Levels</h4><div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{results.gamification.levels.map((l,i)=><div key={i} className="hover-lift" style={{padding:"14px 20px",borderRadius:12,background:C.sf,textAlign:"center",border:`1px solid ${l.color}30`,minWidth:90}}><div style={{fontSize:22,fontWeight:800,color:l.color}}>{l.lv}</div><div style={{fontSize:12,fontWeight:700}}>{l.name}</div><div style={{fontSize:11,color:C.mt}}>{l.pts} pts</div></div>)}</div></div>}{results.gamification.challenges&&<div style={{marginBottom:24}}><h4 style={{color:C.bl,marginBottom:12}}>⚔️ Challenges</h4>{results.gamification.challenges.map((ch,i)=><div key={i} className="hover-lift" style={{padding:16,borderRadius:12,background:C.sf,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{display:"flex",gap:12,alignItems:"center"}}><span style={{fontSize:28}}>{ch.icon}</span><div><div style={{fontWeight:700,fontSize:14}}>{ch.title}</div><div style={{fontSize:12,color:C.mt}}>{ch.desc}</div></div></div><div style={{textAlign:"right"}}><div style={{fontSize:22,fontWeight:800,color:C.ac}}>{ch.pts}</div><div style={{fontSize:10,color:C.mt}}>points</div></div></div>)}</div>}{results.gamification.achievements&&<div><h4 style={{color:C.gn,marginBottom:12}}>🏅 Achievements</h4><div style={{display:"flex",gap:12,flexWrap:"wrap"}}>{results.gamification.achievements.map((a,i)=><div key={i} className="hover-lift" style={{padding:16,borderRadius:12,background:C.sf,textAlign:"center",width:120,border:`1px solid ${C.bd}`,opacity:a.unlocked?1:.5}}><div style={{fontSize:28,marginBottom:4}}>{a.icon}</div><div style={{fontSize:12,fontWeight:700}}>{a.name}</div><div style={{fontSize:10,color:C.mt}}>{a.desc}</div></div>)}</div></div>}</Cd>}
+
+      {!activeR&&<Empty icon="✦" title="Transformations Complete!" desc="Click any button above to preview your generated content. Save the course to make it available to students." action="💾 Save Course" onAction={saveCourse}/>}
+    </div>}
+  </div>;
+};
+// ═══════ TRAINER LIBRARY (Saved Courses) ═══════
+const TrainerLibrary=()=>{
+  const{library,setLibrary,setToast}=useA();
+  const[sel,setSel]=useState(null);
+  const togglePublish=id=>{setLibrary(p=>{const n=p.map(c=>c.id===id?{...c,published:!c.published}:c);DB.save('library',n);return n;});setToast({m:"Course status updated",t:"success"});};
+  const deleteCourse=id=>{if(!confirm("Delete this course?"))return;setLibrary(p=>{const n=p.filter(c=>c.id!==id);DB.save('library',n);return n;});setToast({m:"Course deleted",t:"success"});setSel(null);};
+  return<div className="fi">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}><div><h1 style={{fontSize:26,margin:0,fontFamily:"'Playfair Display',serif"}}>My Content Library</h1><p style={{color:C.mt,fontSize:14,marginTop:4}}>{library.length} course{library.length!==1?"s":""} created</p></div></div>
+    {library.length===0?<Empty icon="📚" title="No courses yet" desc="Upload content and transform it into engaging learning materials. Saved courses appear here." action="Create First Course"/>:
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
+      {library.map(c=><Cd key={c.id} className="hover-lift" onClick={()=>setSel(c)} style={{cursor:"pointer"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div style={{flex:1}}><h3 style={{margin:"0 0 4px",fontSize:16}}>{c.name||"Untitled"}</h3><p style={{color:C.mt,margin:0,fontSize:12,lineHeight:1.4}}>{c.desc?.slice(0,80)||"No description"}</p></div>
+          <Bg color={c.published?C.gn:C.or}>{c.published?"Published":"Draft"}</Bg>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          {c.transformTypes?.map(t=><Bg key={t} color={C.bl}>{t}</Bg>)}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:11,color:C.dm}}>{c.files?.length||0} files • {new Date(c.createdAt).toLocaleDateString()}</span>
+          <span style={{fontSize:11,color:C.mt}}>{c.students?.length||0} students</span>
+        </div>
+      </Cd>)}
+    </div>}
+    <Md open={!!sel} onClose={()=>setSel(null)} title={sel?.name||"Course"} wide>
+      {sel&&<div>
+        <p style={{color:C.mt,marginBottom:16}}>{sel.desc||"No description"}</p>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>{sel.transformTypes?.map(t=><Bg key={t} color={C.bl} big>{t}</Bg>)}</div>
+        <div style={{marginBottom:16}}><strong style={{fontSize:13,color:C.mt}}>Files:</strong>{sel.files?.map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",fontSize:13}}><FIcon t={f.type}/>{f.name} <span style={{color:C.dm}}>({fmtB(f.size)})</span></div>)}</div>
+        {sel.results?.summary&&<div style={{marginBottom:16}}><strong style={{fontSize:13,color:C.mt}}>Takeaways:</strong><div style={{marginTop:8}}>{sel.results.summary.takeaways?.slice(0,5).map((t,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:6,fontSize:13}}><span style={{color:C.ac}}>•</span>{t}</div>)}</div></div>}
+        <div style={{display:"flex",gap:10}}><Btn v={sel.published?"danger":"success"} onClick={()=>{togglePublish(sel.id);setSel({...sel,published:!sel.published});}}>{sel.published?"Unpublish":"Publish"}</Btn><Btn v="danger" onClick={()=>deleteCourse(sel.id)}>Delete</Btn></div>
+      </div>}
+    </Md>
+  </div>;
+};
+
+// ═══════ TRAINER DASHBOARD ═══════
+const TrainerDash=()=>{
+  const{library}=useA();
+  const pub=library.filter(c=>c.published).length;
+  return<div className="fi">
+    <h1 style={{fontSize:26,margin:"0 0 4px",fontFamily:"'Playfair Display',serif"}}>Dashboard</h1>
+    <p style={{color:C.mt,marginBottom:24,fontSize:14}}>Welcome back, Trainer</p>
+    <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:24}}>
+      <St label="Total Courses" value={library.length} icon="📚" color={C.bl}/>
+      <St label="Published" value={pub} icon="🌐" color={C.gn}/>
+      <St label="Total Students" value={library.reduce((s,c)=>(s+(c.students?.length||0)),0)} icon="👥" color={C.pu}/>
+      <St label="Content Pieces" value={library.reduce((s,c)=>(s+(c.transformTypes?.length||0)),0)} icon="✦" color={C.ac}/>
+    </div>
+    {library.length>0?<div>
+      <h3 style={{fontSize:16,marginBottom:12}}>Recent Courses</h3>
+      {library.slice(0,5).map(c=><div key={c.id} className="hover-lift" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderRadius:12,background:C.cd,border:`1px solid ${C.bd}`,marginBottom:8}}>
+        <div><div style={{fontWeight:600,fontSize:14}}>{c.name||"Untitled"}</div><div style={{fontSize:12,color:C.mt}}>{c.transformTypes?.length||0} transforms • {new Date(c.createdAt).toLocaleDateString()}</div></div>
+        <Bg color={c.published?C.gn:C.or}>{c.published?"Live":"Draft"}</Bg>
+      </div>)}
+    </div>:<Empty icon="🚀" title="Get started" desc="Create your first course by uploading content"/>}
+  </div>;
+};
+
+// ═══════ STUDENT: COURSE VIEWER ═══════
+const StudentCourses=()=>{
+  const{library,setToast}=useA();
+  const published=library.filter(c=>c.published);
+  const[enrolled,setEnrolled]=useState(()=>DB.load('enrolled',[]));
+  const[sel,setSel]=useState(null);const[viewing,setViewing]=useState(null);
+  const[activeR,setActiveR]=useState(null);
+  // Quiz
+  const[qI,setQI]=useState(0);const[qA,setQA]=useState({});const[qS,setQS]=useState(false);
+  // Flash
+  const[fI,setFI]=useState(0);const[fFlip,setFFlip]=useState(false);
+  // Fill
+  const[fillA,setFillA]=useState({});const[fillC,setFillC]=useState(false);
+  const[pts,setPts]=useState(()=>DB.load('points',0));
+
+  const enroll=id=>{const n=[...enrolled,id];setEnrolled(n);DB.save('enrolled',n);setToast({m:"Enrolled!",t:"success"});setSel(null);};
+  const unenroll=id=>{const n=enrolled.filter(x=>x!==id);setEnrolled(n);DB.save('enrolled',n);setToast({m:"Unenrolled",t:"info"});};
+
+  if(viewing){
+    const course=library.find(c=>c.id===viewing);
+    if(!course)return<div><Btn v="ghost" onClick={()=>setViewing(null)}>← Back</Btn><p>Course not found</p></div>;
+    const r=course.results||{};
+    return<div className="fi">
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}><Btn v="ghost" sz="sm" onClick={()=>{setViewing(null);setActiveR(null);}}>← Back</Btn><div><h1 style={{fontSize:24,margin:0,fontFamily:"'Playfair Display',serif"}}>{course.name}</h1><p style={{color:C.mt,margin:0,fontSize:13}}>{course.desc}</p></div></div>
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {r.quiz?.length>0&&<Btn v={activeR==="quiz"?"primary":"secondary"} sz="sm" onClick={()=>{setActiveR("quiz");setQI(0);setQA({});setQS(false);}}>❓ Quiz</Btn>}
+        {r.flashcards?.length>0&&<Btn v={activeR==="fc"?"primary":"secondary"} sz="sm" onClick={()=>{setActiveR("fc");setFI(0);setFFlip(false);}}>⚡ Cards</Btn>}
+        {r.summary&&<Btn v={activeR==="sum"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("sum")}>📝 Takeaways</Btn>}
+        {r.fill?.length>0&&<Btn v={activeR==="fill"?"primary":"secondary"} sz="sm" onClick={()=>{setActiveR("fill");setFillA({});setFillC(false);}}>✏️ Fill</Btn>}
+        {r.gamification&&<Btn v={activeR==="gm"?"primary":"secondary"} sz="sm" onClick={()=>setActiveR("gm")}>🎮 Gamified</Btn>}
+      </div>
+      {/* Reuse same result viewers */}
+      {activeR==="quiz"&&r.quiz&&<Cd>{!qS?<div><Bg color={C.bl} big>Q {qI+1}/{r.quiz.length}</Bg><div style={{background:C.sf,borderRadius:12,padding:22,margin:"16px 0"}}><div style={{fontSize:17,marginBottom:16,lineHeight:1.5}}>{r.quiz[qI].q}</div>{r.quiz[qI].o.map((o,i)=><div key={i} onClick={()=>setQA(p=>({...p,[qI]:i}))} style={{padding:"12px 16px",borderRadius:10,border:`2px solid ${qA[qI]===i?C.ac:C.bd}`,background:qA[qI]===i?`${C.ac}12`:"transparent",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:22,height:22,borderRadius:11,border:`2px solid ${qA[qI]===i?C.ac:C.bd}`,background:qA[qI]===i?C.ac:"transparent",color:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}>{qA[qI]===i&&"✓"}</div>{String(o).slice(0,140)}</div>)}</div><div style={{display:"flex",justifyContent:"space-between"}}><Btn v="secondary" sz="sm" disabled={qI===0} onClick={()=>setQI(i=>i-1)}>←</Btn>{qI<r.quiz.length-1?<Btn sz="sm" onClick={()=>setQI(i=>i+1)}>→</Btn>:<Btn sz="sm" onClick={()=>{setQS(true);const sc=r.quiz.filter((q,i)=>qA[i]===q.a).length;setPts(p=>{const n=p+sc*50;DB.save('points',n);return n;});}}>Submit</Btn>}</div></div>:<div style={{textAlign:"center",padding:20}}><span style={{fontSize:48}}>🎉</span><h3 style={{margin:"8px 0"}}>Score: {r.quiz.filter((q,i)=>qA[i]===q.a).length}/{r.quiz.length}</h3><p style={{color:C.gn}}>+{r.quiz.filter((q,i)=>qA[i]===q.a).length*50} points!</p><Btn v="secondary" onClick={()=>{setQA({});setQS(false);setQI(0);}} style={{marginTop:12}}>Retake</Btn></div>}</Cd>}
+      {activeR==="fc"&&r.flashcards&&<div style={{maxWidth:480,margin:"0 auto"}}><Cd onClick={()=>setFFlip(!fFlip)} style={{minHeight:240,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:40,cursor:"pointer"}}><Bg color={C.bl}>Card {fI+1}/{r.flashcards.length}</Bg>{!fFlip?<h2 style={{margin:"20px 0",fontSize:20,fontFamily:"'Playfair Display',serif"}}>{r.flashcards[fI].f}</h2>:<div style={{margin:"20px 0",padding:16,borderRadius:10,background:`${C.ac}0a`,fontSize:14,color:C.mt,lineHeight:1.6}}>{r.flashcards[fI].b}</div>}</Cd><div style={{display:"flex",justifyContent:"center",gap:12,marginTop:16}}><Btn v="danger" sz="sm" onClick={()=>{setFI(i=>(i+1)%r.flashcards.length);setFFlip(false);}}>Hard</Btn><Btn v="secondary" sz="sm" onClick={()=>{setFI(i=>(i+1)%r.flashcards.length);setFFlip(false);}}>Good</Btn><Btn v="success" sz="sm" onClick={()=>{setFI(i=>(i+1)%r.flashcards.length);setFFlip(false);setPts(p=>{const n=p+10;DB.save('points',n);return n;});}}>Easy +10</Btn></div></div>}
+      {activeR==="sum"&&r.summary&&<Cd><h2 style={{fontSize:20,marginBottom:16,fontFamily:"'Playfair Display',serif"}}>{r.summary.title||"Takeaways"}</h2>{r.summary.takeaways?.map((t,i)=><div key={i} style={{display:"flex",gap:10,marginBottom:10,padding:"8px 12px",borderRadius:8,background:C.sf}}><span style={{color:C.ac}}>•</span><span style={{fontSize:14,lineHeight:1.5}}>{t}</span></div>)}{r.summary.concepts?.length>0&&<div style={{marginTop:16}}><h4 style={{color:C.pu,marginBottom:10}}>Concepts</h4>{r.summary.concepts.map((c,i)=><div key={i} style={{padding:"10px 14px",borderRadius:8,background:C.sf,marginBottom:6}}><strong style={{color:C.ac}}>{c.term}</strong> — <span style={{color:C.mt}}>{c.definition}</span></div>)}</div>}</Cd>}
+      {activeR==="fill"&&r.fill&&<Cd><h3 style={{marginBottom:16}}>Fill in the Blanks</h3>{r.fill.map((f,i)=><div key={i} style={{background:C.sf,borderRadius:10,padding:16,marginBottom:10}}><div style={{fontSize:14,lineHeight:2.2}}>{f.t.split("_____").map((part,j)=><React.Fragment key={j}>{part}{j<f.t.split("_____").length-1&&<input value={fillA[i]||""} onChange={e=>setFillA(p=>({...p,[i]:e.target.value}))} disabled={fillC} placeholder="..." style={{width:120,padding:"4px 8px",borderRadius:6,border:`1px solid ${fillC?(fillA[i]||"").toLowerCase().trim()===f.a.toLowerCase()?C.gn:C.rd:C.bd}`,background:C.bg,color:C.tx,fontSize:14,outline:"none",textAlign:"center"}}/>}</React.Fragment>)}</div>{fillC&&(fillA[i]||"").toLowerCase().trim()!==f.a.toLowerCase()&&<span style={{fontSize:12,color:C.gn}}>Answer: {f.a}</span>}</div>)}<div style={{marginTop:12}}>{!fillC?<Btn onClick={()=>setFillC(true)}>Check</Btn>:<Btn v="secondary" onClick={()=>{setFillA({});setFillC(false);}}>Retry</Btn>}</div></Cd>}
+      {activeR==="gm"&&r.gamification&&<Cd><h3 style={{marginBottom:16}}>🎮 Gamification</h3><div style={{textAlign:"center",marginBottom:20}}><div style={{fontSize:36,fontWeight:800,color:C.ac}}>{pts}</div><div style={{color:C.mt,fontSize:13}}>Total Points</div></div>{r.gamification.levels&&<div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>{r.gamification.levels.map(l=><div key={l.lv} style={{padding:"10px 16px",borderRadius:10,background:pts>=l.pts?`${l.color}20`:C.sf,border:`1px solid ${pts>=l.pts?l.color:C.bd}`,textAlign:"center",opacity:pts>=l.pts?1:.4}}><div style={{fontSize:16,fontWeight:800,color:l.color}}>{l.lv}</div><div style={{fontSize:11}}>{l.name}</div></div>)}</div>}</Cd>}
+      {!activeR&&<Empty icon="📖" title="Start Learning" desc="Select a content type above to begin"/>}
+    </div>;
+  }
+
+  return<div className="fi">
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}><div><h1 style={{fontSize:26,margin:0,fontFamily:"'Playfair Display',serif"}}>My Courses</h1><p style={{color:C.mt,fontSize:14,marginTop:4}}>Points: <strong style={{color:C.ac}}>{pts}</strong></p></div></div>
+    {/* Enrolled */}
+    {enrolled.length>0&&<div style={{marginBottom:28}}>
+      <h3 style={{fontSize:16,marginBottom:12}}>📚 Enrolled</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+        {enrolled.map(id=>{const c=library.find(x=>x.id===id);if(!c)return null;return<Cd key={id} className="hover-lift" onClick={()=>setViewing(id)} style={{cursor:"pointer"}}><h3 style={{margin:"0 0 6px",fontSize:16}}>{c.name}</h3><p style={{color:C.mt,margin:"0 0 10px",fontSize:12}}>{c.desc?.slice(0,60)}</p><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{c.transformTypes?.map(t=><Bg key={t} color={C.bl}>{t}</Bg>)}</div><div style={{marginTop:12,display:"flex",gap:8}}><Btn sz="sm" onClick={e=>{e.stopPropagation();setViewing(id);}}>Learn →</Btn><Btn v="ghost" sz="sm" onClick={e=>{e.stopPropagation();unenroll(id);}}>Unenroll</Btn></div></Cd>;})}
+      </div>
+    </div>}
+    {/* Available */}
+    <h3 style={{fontSize:16,marginBottom:12}}>🌐 Available Courses</h3>
+    {published.filter(c=>!enrolled.includes(c.id)).length===0?<Empty icon="📭" title="No new courses" desc="All published courses are already in your list, or no courses have been published yet."/>:
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+      {published.filter(c=>!enrolled.includes(c.id)).map(c=><Cd key={c.id} className="hover-lift" onClick={()=>setSel(c)} style={{cursor:"pointer"}}><h3 style={{margin:"0 0 6px",fontSize:16}}>{c.name}</h3><p style={{color:C.mt,margin:"0 0 10px",fontSize:12,lineHeight:1.4}}>{c.desc?.slice(0,80)||"No description"}</p><div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>{c.transformTypes?.map(t=><Bg key={t} color={C.pu}>{t}</Bg>)}</div><Btn sz="sm" full onClick={e=>{e.stopPropagation();enroll(c.id);}}>Enroll →</Btn></Cd>)}
+    </div>}
+    <Md open={!!sel} onClose={()=>setSel(null)} title={sel?.name}>{sel&&<div><p style={{color:C.mt,marginBottom:16}}>{sel.desc}</p><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>{sel.transformTypes?.map(t=><Bg key={t} color={C.bl} big>{t}</Bg>)}</div><div style={{marginBottom:16,fontSize:13,color:C.mt}}>{sel.files?.length} files uploaded</div><Btn full onClick={()=>enroll(sel.id)}>Enroll in Course</Btn></div>}</Md>
+  </div>;
+};
+// ═══════ SHELL + LANDING + APPS + ROOT ═══════
+const Shell=({children,role,nav,active:ac,setActive:sa})=>{
+  const{go}=useA();const[col,setCol]=useState(false);
+  return<div style={{display:"flex",minHeight:"100vh",background:C.bg}}>
+    <div style={{width:col?68:250,background:C.sf,borderRight:`1px solid ${C.bd}`,display:"flex",flexDirection:"column",transition:"width .3s ease",flexShrink:0,overflow:"hidden"}}>
+      <div style={{padding:"18px 14px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.bd}`,cursor:"pointer"}} onClick={()=>setCol(!col)}><span style={{fontSize:26,color:C.ac,flexShrink:0}}>{B.logo}</span>{!col&&<div><div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",whiteSpace:"nowrap"}}>{B.name}</div><div style={{fontSize:10,color:C.mt}}>{B.tag}</div></div>}</div>
+      <div style={{padding:"10px 8px",flex:1}}>{nav.map(i=><button key={i.id} onClick={()=>sa(i.id)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"11px 14px",borderRadius:10,border:"none",cursor:"pointer",marginBottom:3,background:ac===i.id?`${C.ac}15`:"transparent",color:ac===i.id?C.ac:C.mt,fontFamily:"inherit",fontSize:13,fontWeight:ac===i.id?700:500,textAlign:"left",transition:"all .2s"}}><span style={{fontSize:17,width:22,textAlign:"center",flexShrink:0}}>{i.ic}</span>{!col&&<span style={{whiteSpace:"nowrap"}}>{i.label}</span>}{!col&&i.badge>0&&<span style={{marginLeft:"auto",background:C.ac,color:C.bg,fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:10}}>{i.badge}</span>}</button>)}</div>
+      <div style={{padding:"10px 8px",borderTop:`1px solid ${C.bd}`}}><button onClick={()=>go(null)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"11px 14px",borderRadius:10,border:"none",cursor:"pointer",background:"transparent",color:C.mt,fontFamily:"inherit",fontSize:13,textAlign:"left"}}><span style={{fontSize:17}}>⏻</span>{!col&&"Sign Out"}</button></div>
+    </div>
+    <div style={{flex:1,overflow:"auto"}}>
+      <div style={{padding:"14px 30px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${C.bd}`,background:`${C.sf}cc`,backdropFilter:"blur(16px)",position:"sticky",top:0,zIndex:100}}>
+        <span style={{fontSize:14,color:C.mt}}>✦ {B.tag}</span>
+        <div style={{display:"flex",alignItems:"center",gap:14}}><Bg color={role==="trainer"?C.ac:C.bl} big>{role==="trainer"?"🎓 Trainer":"📖 Student"}</Bg><Av t={role==="trainer"?"TR":"ST"} sz={34}/></div>
+      </div>
+      <div style={{padding:30}}>{children}</div>
+    </div>
+  </div>;
+};
+
+const Landing=()=>{
+  const{go}=useA();const[hov,setHov]=useState(null);
+  return<div style={{minHeight:"100vh",background:C.bg}}>
+    <nav style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 48px",borderBottom:`1px solid ${C.bd}33`,position:"sticky",top:0,background:`${C.bg}dd`,backdropFilter:"blur(16px)",zIndex:99}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:30,color:C.ac}}>{B.logo}</span><div><span style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{B.name}</span><span style={{fontSize:10,color:C.mt,display:"block",marginTop:-2}}>{B.tag}</span></div></div>
+      <div style={{display:"flex",gap:8}}><Btn v="secondary" sz="sm" onClick={()=>go("student")} icon="📖">Student</Btn><Btn sz="sm" onClick={()=>go("trainer")} icon="🎓">Trainer</Btn></div>
+    </nav>
+    <div style={{textAlign:"center",padding:"100px 40px 60px",maxWidth:880,margin:"0 auto",position:"relative"}}>
+      <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:600,height:600,borderRadius:"50%",background:`radial-gradient(circle,${C.ac}06 0%,transparent 70%)`,pointerEvents:"none"}}/>
+      <Bg color={C.ac} big>✦ AI-Powered Learning Transformation</Bg>
+      <h1 style={{fontSize:58,fontWeight:800,margin:"24px 0",fontFamily:"'Playfair Display',serif",lineHeight:1.08,background:`linear-gradient(135deg,${C.tx},${C.ac})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Upload Content.<br/>AI Does the Rest.</h1>
+      <p style={{fontSize:19,color:C.mt,maxWidth:580,margin:"0 auto 40px",lineHeight:1.65}}>Trainers upload PDFs, documents, and videos. Our AI generates quizzes, flashcards, summaries, audio, micro-videos, interactive overlays, and gamified learning — instantly.</p>
+      <div style={{display:"flex",gap:16,justifyContent:"center"}}><Btn sz="lg" onClick={()=>go("trainer")} icon="🎓">Trainer Portal →</Btn><Btn sz="lg" v="secondary" onClick={()=>go("student")} icon="📖">Student Portal</Btn></div>
+    </div>
+    <div style={{display:"flex",justifyContent:"center",gap:64,padding:"40px 40px",borderTop:`1px solid ${C.bd}22`,borderBottom:`1px solid ${C.bd}22`}}>
+      {[{l:"Transformations",v:"8 Types",i:"✦"},{l:"File Types",v:"PDF, DOCX, Video",i:"📁"},{l:"Interactive",v:"Quizzes & Games",i:"🎮"},{l:"Persistent",v:"Saved Courses",i:"💾"}].map(s=><div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,marginBottom:4}}>{s.i}</div><div style={{fontSize:20,fontWeight:800,color:C.ac,fontFamily:"'Playfair Display',serif"}}>{s.v}</div><div style={{fontSize:12,color:C.mt,marginTop:2}}>{s.l}</div></div>)}
+    </div>
+    <div style={{maxWidth:960,margin:"0 auto",padding:"60px 40px"}}>
+      <h2 style={{textAlign:"center",fontSize:32,marginBottom:16,fontFamily:"'Playfair Display',serif"}}>How It Works</h2>
+      <p style={{textAlign:"center",color:C.mt,marginBottom:40,fontSize:15}}>Three steps from raw content to engaging learning</p>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:24}}>
+        {[{t:"1. Upload",d:"Trainers upload PDFs, DOCX, videos, audio — any format. Real text extraction from documents.",c:C.bl,i:"⬆",r:"trainer"},{t:"2. AI Transform",d:"Select from 8 transformation types. Content is analyzed and converted into interactive learning.",c:C.ac,i:"✦",r:"ai"},{t:"3. Learn",d:"Students access published courses with quizzes, flashcards, summaries, and gamification.",c:C.gn,i:"📖",r:"student"}].map(f=><Cd key={f.t} className="hover-lift" style={{textAlign:"center",padding:32}}><div style={{width:56,height:56,borderRadius:16,background:`${f.c}15`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",fontSize:26,color:f.c,border:`1px solid ${f.c}20`}}>{f.i}</div><h3 style={{fontSize:17,margin:"0 0 10px",fontFamily:"'Playfair Display',serif"}}>{f.t}</h3><p style={{color:C.mt,margin:0,lineHeight:1.6,fontSize:14}}>{f.d}</p></Cd>)}
+      </div>
+    </div>
+    <div style={{padding:"60px 40px",background:C.sf}}>
+      <h2 style={{textAlign:"center",fontSize:28,marginBottom:36,fontFamily:"'Playfair Display',serif"}}>8 Transformation Types</h2>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,maxWidth:900,margin:"0 auto"}}>
+        {[{l:"PDF → Quizzes",i:"📕❓",c:C.rd},{l:"Docs → Flashcards",i:"📘⚡",c:C.bl},{l:"Text → Audio",i:"📄🔊",c:C.gn},{l:"Video → Chunks",i:"🎬✂️",c:C.pu},{l:"Transcript Takeaways",i:"📝📋",c:C.pk},{l:"Video → Interactive",i:"🎬🎯",c:C.or},{l:"Fill in Blanks",i:"📘✏️",c:C.ac},{l:"Gamification",i:"📚🎮",c:C.cy}].map((c,i)=><div key={c.l} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} style={{padding:22,borderRadius:14,border:`1px solid ${hov===i?c.c:C.bd}`,textAlign:"center",background:hov===i?`${c.c}08`:`${c.c}04`,transition:"all .3s",transform:hov===i?"translateY(-4px)":"none",boxShadow:hov===i?`0 8px 24px ${c.c}15`:"none"}}><div style={{fontSize:26,marginBottom:8}}>{c.i}</div><div style={{fontSize:12,fontWeight:700}}>{c.l}</div></div>)}
+      </div>
+    </div>
+    <footer style={{padding:"36px 48px",borderTop:`1px solid ${C.bd}22`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:20,color:C.ac}}>{B.logo}</span><span style={{fontWeight:700}}>{B.name}</span></div><span style={{color:C.dm,fontSize:12}}>© 2026 {B.name}. All rights reserved.</span></footer>
+  </div>;
+};
+
+// TRAINER APP
+const TrainerApp=()=>{
+  const{library}=useA();const[pg,setPg]=useState("dashboard");
+  const nav=[{id:"dashboard",label:"Dashboard",ic:"⊞"},{id:"upload",label:"Create Course",ic:"✦"},{id:"library",label:"My Library",ic:"📚",badge:library.length},{id:"analytics",label:"Analytics",ic:"◈"}];
+  return<Shell role="trainer" nav={nav} active={pg} setActive={setPg}>
+    {pg==="dashboard"&&<TrainerDash/>}
+    {pg==="upload"&&<TrainerUpload/>}
+    {pg==="library"&&<TrainerLibrary/>}
+    {pg==="analytics"&&<div className="fi"><h1 style={{fontSize:26,margin:"0 0 24px",fontFamily:"'Playfair Display',serif"}}>Analytics</h1><div style={{display:"flex",gap:16,flexWrap:"wrap"}}><St label="Courses" value={library.length} icon="📚" color={C.bl}/><St label="Published" value={library.filter(c=>c.published).length} icon="🌐" color={C.gn}/><St label="Transforms" value={library.reduce((s,c)=>s+(c.transformTypes?.length||0),0)} icon="✦" color={C.ac}/><St label="Content Items" value={library.reduce((s,c)=>s+(c.results?.quiz?.length||0)+(c.results?.flashcards?.length||0)+(c.results?.fill?.length||0),0)} icon="📝" color={C.pu}/></div></div>}
+  </Shell>;
+};
+
+// STUDENT APP
+const StudentApp=()=>{
+  const{library}=useA();const[pg,setPg]=useState("courses");
+  const pts=DB.load('points',0);
+  const enrolled=DB.load('enrolled',[]);
+  const nav=[{id:"courses",label:"My Courses",ic:"📖",badge:enrolled.length},{id:"browse",label:"Browse",ic:"⌕"},{id:"progress",label:"Progress",ic:"◈"}];
+  return<Shell role="student" nav={nav} active={pg} setActive={setPg}>
+    {(pg==="courses"||pg==="browse")&&<StudentCourses/>}
+    {pg==="progress"&&<div className="fi"><h1 style={{fontSize:26,margin:"0 0 24px",fontFamily:"'Playfair Display',serif"}}>My Progress</h1><div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:24}}><St label="Points" value={pts} icon="⭐" color={C.ac}/><St label="Enrolled" value={enrolled.length} icon="📖" color={C.bl}/><St label="Completed" value={0} icon="✅" color={C.gn}/></div></div>}
+  </Shell>;
+};
+
+// APP ROOT
+function App(){
+  const[vw,setVw]=useState("landing");const[toast,setToast]=useState(null);
+  const[library,setLibrary]=useState(()=>DB.load('library',[]));
+  const go=r=>{if(!r){setVw("landing");return;}setVw(r);};
+  return<Ctx.Provider value={{go,toast,setToast,library,setLibrary}}>
+    {vw==="landing"&&<Landing/>}{vw==="trainer"&&<TrainerApp/>}{vw==="student"&&<StudentApp/>}
+    {toast&&<Toast message={toast.m} type={toast.t} onClose={()=>setToast(null)}/>}
+  </Ctx.Provider>;
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script></body></html>
